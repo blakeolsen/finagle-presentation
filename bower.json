@@ -1,0 +1,22 @@
+{
+  "name": "finagle-d3",
+  "version": "0.0.1",
+  "authors": [
+    "Philippe Laflamme <philippe.laflamme@gmail.com>"
+  ],
+  "description": "Finagle Presentation",
+  "main": "index.html",
+  "license": "MIT",
+  "private": true,
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "d3": "3.3.12",
+    "reveal.js": "2.6.2"
+  }
+}

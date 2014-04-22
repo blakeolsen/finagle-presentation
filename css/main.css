@@ -1,0 +1,46 @@
+.node {
+  fill: #fff;
+  stroke-width: 1.5px;
+}
+
+.node .root {
+  stroke: black;
+  fill: #888;
+}
+
+.node .circle {
+  stroke: steelblue;
+}
+
+.node .cross {
+  stroke: darkorange;
+}
+
+.node .diamond {
+  stroke: mediumpurple;
+}
+
+.node .square {
+  stroke: slategrey;
+}
+
+.node .triangle-down {
+  stroke: chocolate;
+}
+
+.node .triangle-up {
+  stroke: cadetblue;
+}
+
+.node text {
+  fill: #000;
+  font-size: 20px;
+}
+
+path.link {
+  fill: none;
+  stroke: #ccc;
+  stroke-width: 1.5px;
+}
+
+    

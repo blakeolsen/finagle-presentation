@@ -1,0 +1,661 @@
+<!doctype html>
+<html lang="en">
+
+	<head>
+		<meta charset="utf-8">
+
+		<title>Finagle - A fault tolerant, protocol-agnostic RPC system</title>
+
+		<meta name="description" content="Finagle - A fault tolerant, protocol-agnostic RPC system">
+		<meta name="author" content="Philippe Laflamme">
+
+		<meta name="apple-mobile-web-app-capable" content="yes" />
+		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+		<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+
+		<link rel="stylesheet" href="bower_components/reveal.js/css/reveal.min.css">
+		<link rel="stylesheet" href="bower_components/reveal.js/css/theme/solarized.css" id="theme">
+
+		<!-- For syntax highlighting -->
+		<link rel="stylesheet" href="bower_components/reveal.js/lib/css/zenburn.css">
+		
+    <link rel="stylesheet" href="css/main.css">
+
+		<style>
+		  .reveal sup {
+		    font-size: 0.75em;
+		  }
+		</style>
+
+		<!-- If the query includes 'print-pdf', include the PDF print sheet -->
+		<script>
+			if( window.location.search.match( /print-pdf/gi ) ) {
+				var link = document.createElement( 'link' );
+				link.rel = 'stylesheet';
+				link.type = 'text/css';
+				link.href = 'css/print/pdf.css';
+				document.getElementsByTagName( 'head' )[0].appendChild( link );
+			}
+		</script>
+
+		<!--[if lt IE 9]>
+		<script src="lib/js/html5shiv.js"></script>
+		<![endif]-->
+	</head>
+
+	<body>
+		<div class="reveal">
+			<div class="slides">
+			  <section data-markdown>
+          # Finagle
+          
+          #### A fault tolerant, protocol-agnostic RPC system
+          
+          Scala User Group - Montreal
+          
+          2014.04.22
+			  </section>
+        <section data-markdown>
+          ## Agenda
+
+          * What's Finagle?
+          * Why would you use Finagle?
+          * How?
+          * Demo
+        </section>
+        <section>
+          <section>
+            <h2>What's Finagle?</h2>
+          </section>
+          <section data-markdown>
+            > Finagle is an extensible RPC system for the JVM, used to construct high-concurrency servers. Finagle implements uniform client and server APIs for several protocols, and is designed for high performance and concurrency.
+          </section>
+          <section data-markdown>
+            ### Uniform
+            
+            Protocols implemented on the Finagle stack all expose the same interface.
+            
+            Some protocols have a "rich" variant that expose higher-level APIs.
+          </section>
+          <section>
+            <h3>Extensible</h3>
+            
+            <p>Finagle provides RPC-style APIs for several protocols out of the box</p>
+            
+            <p>HTTP, SPDY, Thrift, Protobuf, Redis, MySQL, Kestrel, Memcached</p>
+            
+            <p>Adding new protocols is simple. Some contributions: WebSocket, PostgreSQL, AWS, Apple Push Notification</p>
+          </section>
+          <section data-markdown>
+            ### Asynchronous
+            
+            Based on Netty 3, Finagle is non-blocking and designed for high-concurrency.
+          </section>
+        </section>
+        <section>
+            <h3>Finagle is also...</h3>
+            <ul>
+              <li class="fragment">Connection Pooling</li>
+              <li class="fragment">Load Balancing</li>
+              <li class="fragment">Failure Detection</li>
+              <li class="fragment">Failover / Retry</li>
+              <li class="fragment">Metrics</li>
+              <li class="fragment">Service Discovery</li>
+              <li class="fragment">Distributed Tracing</li>
+            </ul>
+        </section>
+        <section>
+          <h2>Why?</h2>
+        </section>
+        <section id="slide-a">
+          <h3>Consider a typical application</h3>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+        </section>
+        <section id="slide-b">
+          <h3>Equivalent App with Finagle</h3>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+          <span class="fragment"></span>
+        </section>
+        <section>
+          <h2>How?</h2>
+          <ul>
+            <li class="fragment">Future</li>
+            <li class="fragment">Service</li>
+            <li class="fragment">Filter</li>
+          </ul>
+        </section>
+        <section>
+          <section data-markdown>
+            ## Future
+
+            ```com.twitter.util.Future == scala.concurrent.Future```
+          </section>
+          <section data-markdown>
+            map/flatMap/for
+            
+            ```scala
+            for {
+              userId <- userService.fetch(email).map(_.id)
+              followers <- followGraph.following(userId)
+            } yield {
+              followers.size
+            }
+            ```
+          </section>
+          <section data-markdown>
+            ```twitter.Future != scala.Future```
+            
+            * Has a global execution context
+            * You can ```cancel/raise``` them
+          </section>
+          <section data-markdown>
+            ## Futures of Finagle
+            
+            Futures are scheduled on Netty io threads. Code executing on those needs to return quickly, otherwise you can starve Netty.
+            
+            Obviously you shouldn't ever block.
+
+            You can easily use other threads to delegate expensive or blocking operations
+            
+            ```scala
+            val moreThreads = FuturePool(Executors.newCachedThreadPool(4))
+            
+            service(req).flatMap { res =>
+              moreThreads {
+                expensiveOrBlockingOp(res)
+              }
+            }```
+            
+          </section>
+        </section>
+        <section>
+          <section data-markdown>
+            ## Service
+            
+            ```Future``` allows concurrent operations, ```Service``` provides the abstraction for simple network operations: ```RPC```
+            
+            A remote-procedure-call is basically:
+            
+            1. dispatch a request
+            1. wait
+            1. receive a success or failure
+            
+            **So a ```Service``` is...**
+          </section>
+          <section data-markdown>
+            ## a function! Yay!
+            
+            A function that turns a ```Request``` into a ```Future[Response]```
+            
+            ```scala
+              trait Service[Req, Res] extends (Req => Future[Res])
+            ```
+          </section>
+          <section data-markdown>
+            Clients *consume* them, servers *expose* them.
+
+            Client - | S | --- | S | - Server
+          </section>
+          <section data-markdown>
+            ```scala
+            object Client {
+              val httpService: Service[HttpReq, HttpRes] = ???
+              def apply(): Future[HttpRes] = {
+                val req: HttpReq = ???
+                httpService(req)
+              }
+            }
+            
+            object Server extends Service[HttpReq, HttpRes] {
+              def apply(request: HttpReq) = {
+                val res: HttpRes = ???
+                Future.const(res)
+              }
+            }
+            
+            ```
+          </section>
+        </section>
+        <section>
+          <section data-markdown>
+            ## Filter
+            
+            Many common properties of services are agnostic to the service's implementation.
+            
+            For example, retries, timeout, statistics, tracing can be applied to any ```Service```.
+            
+            A ```Filter``` is a *function* that can alter the behaviour of a service without knowing anything about what that service is.
+          </section>
+          <section data-markdown>
+            ## another function! Yay!
+            ```scala
+              class Filter[ReqIn, RepOut, ReqOut, RepIn]
+                extends ((ReqIn, Service[ReqOut, RepIn]) => Future[RepOut])
+            ```
+            or
+            ```scala
+              class Filter[ReqIn, RepOut, ReqOut, RepIn] {
+              
+                def apply(req: ReqIn, serv: Service[ReqOut, RepIn]): Future[RepOut]
+
+              }
+            ```
+          </section>
+          <section data-markdown>
+            ## Examples
+
+            A timeout filter: timeout a request after 1 second.
+            ```scala
+            val timeout = { (req: Req, service: Service[Req, Res]) =>
+              service(req).within(1.second)
+            }
+            ```
+
+            A filter that measures response time and keeps statistics about them:
+            ```scala
+            val timing = { (req: Req, service: Service[Req, Res]) =>
+              stats.metric("request_latency").timeFuture(service(req))
+            }```
+
+            An authentication filter: dispatches a request after authentication
+             ```scala
+             val auth = { (req: Req, service: Service[Req, Res]) =>
+               if (isAuth(req))
+                 service(req)
+               else
+                 Future.exception(AuthErr)
+            }
+            ```
+
+         </section>
+          <section data-markdown>
+            ### Composing Filters
+
+            You can compose ```Filter```s
+
+            ```scala
+            def timeout[Req,Rep](): Filter[Req, Rep] = ???
+            val auth: Filter[HttpReq, HttpRep, AuthHttpReq, HttpRep] = ???
+            val serv: Service[AuthHttpReq, HttpRes] = ???
+
+            val timeOutAuthServ: Service[HttpReq, HttpRep] =
+              timeout andThen auth andThen service
+            ```
+          </section>
+        </section>
+        <section>
+          <section data-markdown>
+          ## Clients and Servers
+          </section>
+          <section data-markdown>
+          ### A Client
+
+          ```scala
+          val client: Service[HttpReq, HttpRep] = 
+            ClientBuilder()
+              .name("google")
+              .codec(Http)
+              .hosts("www.google.com:80")
+              .build()
+
+          client(HttpReq(GET, "/"))
+          ```
+          </section>
+          <section data-markdown>
+          ### A Server
+
+          ```scala
+          val service: Service[HttpReq, HttpRe] = { req =>
+            Future.value(HttpRes(OK, "Hi!"))
+          }
+          val server = 
+            ServerBuilder()
+              .name("hello")
+              .codec(Http)
+              .bindTo(":8080")
+              .build(service)
+          ```
+          </section>
+
+          <section data-markdown>
+          ### An HTTP Proxy
+          ```scala
+          val client: Service[HttpReq, HttpRep] = 
+            ClientBuilder()
+              .name("google")
+              .codec(Http)
+              .hosts("www.google.com:80")
+              .build()
+
+          val proxy = 
+            ServerBuilder()
+              .name("hello")
+              .codec(Http)
+              .bindTo(":8080")
+              .build(client)
+          ```
+          </section>
+           <section data-markdown>
+          ### A one-line HTTP Proxy
+          ```scala
+          val proxy = Http.serve(":8080", Http.newClient("www.google.com:80"))
+          ```
+          </section>
+ 
+        </section>
+        <section data-markdown>
+          ### Demo
+          Let's build a robust, polite HTTP proxy.
+
+          * retry / timeout requests
+          * rate limited
+          * caching: use Redis
+          * service discovery
+          * metrics
+          * tracing
+        </section>
+        <section>
+          <section data-markdown>
+          ### Step 1
+
+          A service that can fetch an arbitrary URL
+
+          ```scala
+          object FetchService extends Service[HttpRequest, HttpResponse] {
+
+            private[this] val PortForScheme = Map("http" -> 80, "https" -> 443)
+
+            private[this] def serviceFor(req: HttpRequest): 
+              Future[Service[HttpRequest, HttpResponse]] = {
+              val uri = new java.net.URI(req.getUri())
+              val port = 
+                if(uri.getPort >= 0) uri.getPort
+                else PortForScheme(uri.getScheme)
+              Http.newClient(s"${uri.getHost}:$port", uri.getHost)()
+            }
+
+            def apply(req: HttpRequest): Future[HttpResponse] = {
+              serviceFor(req)
+                .flatMap { service =>
+                  service(req).ensure(service.close())
+                }
+            }
+          }
+
+          ```
+          </section>
+           <section data-markdown>
+          ### Step 2
+
+          Make it robust and polite
+          
+          * Timeout requests after 5 seconds
+          * Limit to 10 requests per second (per domain)
+          * Retry failed requests
+          </section>
+          <section data-markdown>
+          ```TimeoutFilter``` fails a request after a certain amount of time.
+          ```scala
+          private[this] val timer = new JavaTimer(true)
+
+          def timingout[Req, Rep](timeout: Duration = 5.seconds) = {
+            new TimeoutFilter[Req, Rep](timeout, timer)
+          }
+          ```
+          </section>
+          <section data-markdown>
+          ```RateLimitingFilter``` limits the number of requests applied to its service.
+          ```scala
+          def rateLimited() = {
+            def domain(req: HttpRequest) = new java.net.URI(req.getUri).getHost
+            new RateLimitingFilter[HttpRequest, HttpResponse](
+              new LocalRateLimitingStrategy(domain, 1.second, 10)
+            )
+          }
+          ```
+          </section>
+          <section data-markdown>
+          ```RetryingFilter``` retries failed requests for certain exceptions with an optional backoff behaviour.
+          ```scala
+          private[this] implicit val timer = new JavaTimer(true)
+
+          val shouldRetry: PartialFunction[Try[Nothing], Boolean] = 
+            RetryPolicy.ChannelClosedExceptionsOnly orElse
+            RetryPolicy.TimeoutAndWriteExceptionsOnly orElse {
+              case Throw(_: ConnectTimeoutException) => true
+            }
+
+          def retrying[Req, Rep]() = {
+            RetryingFilter[Req, Rep](
+              Backoff.exponential(1.second, 2).take(3)
+            )(shouldRetry)
+          }
+          ```
+          </section>
+          <section data-markdown>
+          Putting all together
+          ```scala
+          object App extends TwitterApp with step1.FetchUrl with Filters {
+
+            override val service =
+              retrying() andThen
+              rateLimited() andThen
+              timingout[HttpRequest, HttpResponse]() andThen
+              FetchService
+
+          }
+          ```
+          </section>
+          <section data-markdown>
+        ### Step 3 - Caching
+
+        Our cache's contract
+
+        ```scala
+trait Cache {
+
+  def put(key: Array[Byte], value: Array[Byte]): Future[Unit]
+
+  def get(key: Array[Byte]): Future[Option[Array[Byte]]]
+
+}```
+          </section>
+          <section data-markdown>
+        A CachingFilter for any Req/Rep
+        
+        see ```Cache.scala```
+          </section>
+          <section data-markdown>
+        Cache is put in front of everything else
+        ```scala
+object App extends TwitterApp with step1.FetchUrl with step2.Filters {
+
+  override val service =
+    CachingFilter.Http(MemoryCache) andThen
+    retrying[HttpRequest, HttpResponse]() andThen
+    rateLimited() andThen
+    timingout[HttpRequest, HttpResponse]() andThen
+    FetchService
+}
+        ```
+          </section>
+          <section data-markdown>
+        ### Step 4
+        
+        Use Redis as a persistent Cache.
+        
+        Finagle has implemented the Redis protocol: 
+        ```scala
+        type Redis = Service[Command, Reply]
+        ```
+        All Redis commands are supported. 
+          </section>
+          <section data-markdown>
+        An implementation of ```Cache``` on top of ```Service[Command, Reply]```
+        
+        See ```RedisCache.scala```
+          </section>
+          <section data-markdown>
+        Our service with a persistent cache
+        
+```scala
+object App extends TwitterApp with step1.FetchUrl with step2.Filters {
+
+  val redis = 
+    retrying[Command, Reply]() andThen
+    timingout[Command, Reply]() andThen
+    Redis.newClient("localhost:6379", "redis").toService
+
+  override val service =
+    step3.CachingFilter.Http(RedisCache(redis)) andThen
+    retrying[HttpRequest, HttpResponse]() andThen
+    rateLimited() andThen
+    timingout[HttpRequest, HttpResponse]() andThen
+    FetchService
+}       
+``` 
+          </section>
+          <section data-markdown>
+        ### Step 5
+
+        Wrap this functionality inside a server.
+        
+        This step uses an additional library from Twitter's stack: ```twitter-server```
+        
+        It provides a common infrastructure common to all services:
+        
+        * metrics
+        * monitoring endpoints (health/shutdown)
+        * logging
+        * lifecycle / resource management
+        * etc.
+        
+        Makes all your services uniform.
+          </section>
+          <section data-markdown>
+        Proxy server will expose an HTTP endpoint that will extract the URL from a parameter
+
+        ```http
+        http://localhost:8080/?url=http://www.google.ca
+        ```
+
+        ```scala
+object App extends TwitterServer with FetchUrlService {
+  val fetchService =
+    UrlFromParam andThen
+    step3.CachingFilter.Http(step4.RedisCache(redis)) andThen
+    retrying[HttpRequest, HttpResponse]() andThen
+    rateLimited() andThen
+    timingout[HttpRequest, HttpResponse]() andThen
+    FetchService
+     
+  def main {
+    Await.ready(Http.serve(":8080", fetchService))
+  }
+}
+        ```
+          </section>
+          <section>
+        <p>Some examples</p>
+        <ul>
+          <li><a href="http://localhost:8080/?url=http://www.typesafe.com" target="_blank">www.typesafe.com</a></li>
+          <li><a href="http://localhost:8080/?url=http://xkcd.com/149/" target="_blank">xkcd</a></li>
+          <li><a href="http://localhost:8080/?url=http://www.justinbiebermusic.com" target="_blank">last one I promise</a></li>
+          <li><a href="http://localhost:9990/admin" target="_blank">Admin Endpoints</a></li>
+        </ul>
+          </section>
+          <section data-markdown>
+        ### Step 6
+        
+        Service discovery: finagle supports different kinds of service discovery. We'll look at the Zookeeper-based discovery.
+        
+        Servers ```Announce``` themselves and clients ```Resolve``` them.
+        
+        ```scala
+        Announcer.announce("zk!zk-hosts:2181!/path/to/service!0")
+
+        Resolver.resolve("zk!zk-hosts:2181!/path/to/service")
+        ```
+          </section>
+          <section data-markdown>
+        Our server with service discovery
+        ```scala
+object Server extends TwitterServer with step5.FetchUrlService {
+
+  def main {
+    val server = Http.serve(":*", fetchService)
+
+    server.announce("zk!localhost:2181!/org/example/services/fetcher!0")
+     .onFailure { t =>
+       println(s"Failed to announce service: ${t.getMessage}. Failing fast.")
+       System.exit(-1)
+     }
+
+    closeOnExit(Closable.all(server, redis))
+
+    Await.ready(server)
+  }
+}
+        ```
+          </section>
+          <section data-markdown>
+        Our client with service discovery
+        ```scala
+object App extends TwitterApp with step1.FetchUrl {
+  
+  override val service = 
+    Http
+      .newClient("zk!localhost:2181!/org/example/services/fetcher", "fetcher")
+      .toService
+
+}
+        ```
+          </section>
+        </section>
+        <section data-markdown>
+        ## Conclusion
+        
+        Finagle is a productive framework allowing you to focus on what you need to do instead of how.
+        
+        Programming paradigm is familiar and simple (functions!)
+        
+        Easily create uniform services, reusable operational filters and compose them in different ways.
+        </section>
+        
+        <section data-markdown>
+        ## Q & A
+        
+        **e:** philippe@hopper.com
+        
+        **w:** hopper.com
+        </section>
+			</div>
+		</div>
+
+<!-- build:js js/app.js -->
+    <script src="bower_components/reveal.js/lib/js/head.min.js"></script>
+    <script src="bower_components/reveal.js/js/reveal.js"></script>
+    <script src="bower_components/d3/d3.js"></script>
+    <script src="bower_components/jquery/dist/jquery.js"></script>
+    <script src="js/app.js"></script>
+<!-- endbuild -->
+
+	</body>
+</html>
