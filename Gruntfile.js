@@ -48,5 +48,7 @@ module.exports = function(grunt) {
 
   grunt.registerTask('default', ['connect:src']);
 
-  grunt.registerTask('build', ['useminPrepare', 'concat', 'uglify', 'copy', 'usemin']);
+  // Sadly, Reveal wants to load its own Javascript which doesn't play nice with bower and friends...
+  // I decided to give up on that for now.
+  //grunt.registerTask('build', ['useminPrepare', 'concat', 'uglify', 'copy', 'usemin']);
 }
