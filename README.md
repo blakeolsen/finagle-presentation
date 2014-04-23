@@ -1,7 +1,7 @@
 Finagle Presentation
 =======
 
-A presentation of Twitter's Finagle framework. This was written for Montreal's Scala User Group held in April 2014.
+A presentation of Twitter's [Finagle](http://twitter.github.io/finagle/) framework. This was written for Montreal's Scala User Group held in April 2014.
 
 Some of the content was borrowed from [this presentation](http://monkey.org/~marius/talks/twittersystems/) from Marius Eriksen.
 
