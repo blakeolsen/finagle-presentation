@@ -14,7 +14,7 @@ bower install
 grunt
 ```
 
-Then open the presentation [here](http://localhost:8080)
+Then open the presentation [here](http://localhost:8000)
 
 Demo
 ====
